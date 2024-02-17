@@ -9,25 +9,25 @@ import (
 )
 
 type Book struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Price       float64 `json:"price"`
 	Url         string  `json:"url"`
+	Name        string  `json:"name"`
+	Price       float64 `json:"price"`
 	Currency    string  `json:"currency"`
+	Description string  `json:"description"`
 }
 
 const BaseUrl = "https://books.toscrape.com"
 
 func main() {
-	c := colly.NewCollector()
+	c := colly.NewCollector(
+		colly.AllowedDomains("books.toscrape.com"))
 	url := BaseUrl + "/catalogue/page-1.html"
 
 	var items []Book
 
-	c.OnHTML(".product_pod", func(element *colly.HTMLElement) {
+	c.OnHTML("article.product_pod", func(element *colly.HTMLElement) {
 		bookUrl := element.ChildAttr(".image_container a", "href")
-		bookUrl = BaseUrl + "/catalogue/" + bookUrl
-		err := c.Visit(bookUrl)
+		err := c.Visit(element.Request.AbsoluteURL(bookUrl))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -76,6 +76,7 @@ func main() {
 	})
 
 	err := c.Visit(url)
+	c.Wait()
 	if err != nil {
 		log.Fatal(err)
 	}
