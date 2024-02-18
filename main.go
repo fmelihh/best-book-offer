@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"github.com/gocolly/colly"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -19,16 +21,15 @@ type Book struct {
 const BaseUrl = "https://books.toscrape.com"
 
 func main() {
-	c := colly.NewCollector(
-		colly.AllowedDomains("books.toscrape.com"))
+	c := colly.NewCollector(colly.AllowedDomains("books.toscrape.com"))
 	url := BaseUrl + "/catalogue/page-1.html"
+	var items = make([]Book, 0, 20)
 
-	var items []Book
+	c.OnHTML("ol.row li article.product_pod", func(element *colly.HTMLElement) {
+		bookUrl := element.ChildAttr("a", "href")
+		bookUrl = element.Request.AbsoluteURL(bookUrl)
 
-	c.OnHTML("article.product_pod", func(element *colly.HTMLElement) {
-		bookUrl := element.ChildAttr(".image_container a", "href")
-		err := c.Visit(element.Request.AbsoluteURL(bookUrl))
-		if err != nil {
+		if err := c.Visit(bookUrl); err != nil {
 			log.Fatal(err)
 		}
 	})
@@ -38,7 +39,7 @@ func main() {
 		bookTitle := element.ChildText(".row .product_main h1")
 		bookTitle = strings.TrimSpace(bookTitle)
 
-		priceSection := element.ChildText(".row .price_color")
+		priceSection := element.ChildText("#content_inner > article > table > tbody > tr:nth-child(4) > td")
 		priceSection = strings.TrimSpace(priceSection)
 
 		priceUnicodeArr := []rune(priceSection)
@@ -46,7 +47,10 @@ func main() {
 		currency := string(priceUnicodeArr[0])
 
 		priceString := string(priceUnicodeArr[1:])
-		price, _ := strconv.ParseFloat(priceString, 64)
+		price, err := strconv.ParseFloat(priceString, 64)
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		description := element.ChildText("#content_inner > article > p")
 		description = strings.TrimSpace(description)
@@ -62,17 +66,22 @@ func main() {
 
 	})
 
-	c.OnHTML(".pager", func(element *colly.HTMLElement) {
-		nextUrl := element.ChildAttr(".next a", "href")
+	c.OnHTML("ul.pager li.next", func(element *colly.HTMLElement) {
 
+		nextUrl := element.ChildAttr("a", "href")
+		nextUrl = element.Request.AbsoluteURL(nextUrl)
+
+		fmt.Printf("%s page has ended. Switching to the next page %s", element.Request.URL.String(), nextUrl)
 		err := c.Visit(nextUrl)
 		if err != nil {
 			log.Fatal(err)
 		}
+
 	})
 
 	c.OnRequest(func(request *colly.Request) {
 		fmt.Println("visiting", request.URL)
+
 	})
 
 	err := c.Visit(url)
@@ -80,4 +89,39 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Printf("Crawling process has ended. Total crawled data is %d", len(items))
+
+	file, err := os.Create("books.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(file)
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"Url", "Name", "Price", "Currency", "Description"}
+	if err := writer.Write(header); err != nil {
+		log.Fatal(err)
+	}
+
+	for _, item := range items {
+		stringPrice := (func(price float64) string {
+			return strconv.FormatFloat(price, 'f', -1, 64)
+		})(item.Price)
+
+		row := []string{item.Url, item.Name, stringPrice, item.Currency, item.Description}
+		if err := writer.Write(row); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	fmt.Printf("\n\nTotal Crawled data saved to the books.csv file.")
 }
