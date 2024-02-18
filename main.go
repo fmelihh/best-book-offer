@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Book struct {
@@ -21,7 +22,8 @@ type Book struct {
 const BaseUrl = "https://books.toscrape.com"
 
 func main() {
-	c := colly.NewCollector(colly.AllowedDomains("books.toscrape.com"))
+	start := time.Now()
+	c := colly.NewCollector(colly.AllowedDomains("books.toscrape.com"), colly.Async(true))
 	url := BaseUrl + "/catalogue/page-1.html"
 	var items = make([]Book, 0, 20)
 
@@ -113,15 +115,14 @@ func main() {
 	}
 
 	for _, item := range items {
-		stringPrice := (func(price float64) string {
-			return strconv.FormatFloat(price, 'f', -1, 64)
-		})(item.Price)
-
+		stringPrice := strconv.FormatFloat(item.Price, 'f', -1, 64)
 		row := []string{item.Url, item.Name, stringPrice, item.Currency, item.Description}
 		if err := writer.Write(row); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	fmt.Printf("\n\nTotal Crawled data saved to the books.csv file.")
+	t := time.Since(start)
+	fmt.Printf("\n\nSpending Time: %v", t)
+	fmt.Printf("\nTotal Crawled data saved to the books.csv file.")
 }
